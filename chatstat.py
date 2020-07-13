@@ -332,11 +332,23 @@ class ChatStat:
         f2.update_layout(height=800, width=800)
         f2.show() 
 
-        f_yrs, g_yrs = self.yearly_sent_from(from_chat, top=10, kind='pie', show=True)
-        f_yrs.show()
+        from_chat = self.msg_df[self.msg_df.thread_path == thread_name]
+
+        #average words 
+        f_yrs_avg, g_yrs_avg = self.yearly_sent_from(from_chat, top=10, kind='bar', show=True, bywords="avg")
+        f_yrs_avg.show()
+
+        #total words 
+        f_yrs_words, g_yrs_words = self.yearly_sent_from(from_chat, top=10, kind='pie', show=True, bywords="words")
+        f_yrs_words.show()
+
+        #total messages 
+        f_yrs_msgs, g_yrs_msgs = self.yearly_sent_from(from_chat, top=10, kind='pie', show=True, bywords="msg")
+        f_yrs_msgs.show()
 
         self.time_stats(from_chat, show=True)
         
+        from_chat = self.msg_df[self.msg_df.thread_path == thread_name]
         f_w, g_w = self.word_counts(from_chat, length=word_lengths, show=True)
         f_w.show() 
         
@@ -367,7 +379,7 @@ class ChatStat:
 
         return time_indexed
 
-    def yearly_sent_from(self, messages=None, top=10, omit_first=False, kind="pie", show=True):
+    def yearly_sent_from(self, messages=None, top=10, omit_first=False, kind="pie", show=True, bywords=False):
         """
         generates an aggregated message count by year
 
@@ -383,8 +395,11 @@ class ChatStat:
             Bar plot of data
         """
         start = int(omit_first)
-        messages = self.msg_df if messages is None else messages
-        # fig.suptitle("Time-based Stats: Procrastination Metrics", fontsize=20)
+        messages = self.msg_df.copy() if messages is None else messages.copy()
+
+        if bywords != "msg":
+            messages.loc[:, "msg"] = messages.loc[:, "msg"].str.count(' ') + 1
+  
         time_indexed = self.generate_time_indexed_df(messages)
 
         #years represented in dataframe 
@@ -397,21 +412,37 @@ class ChatStat:
             else:
                 nrows = 2 
             
+            if bywords == "avg":
+                figtitle = "Top 10 Senders per Year (by Average Words per Message)"
+            elif bywords == "words":
+                figtitle = "Top 10 Senders per Year (by Total Words)"
+            elif bywords == "msg":
+                figtitle = "Top 10 Senders per Year (by Message Count)"
+            else:
+                raise Error("Expected one of 'avg', 'words', or 'msg.'")
+
             when = make_subplots(rows=nrows, cols=3, specs=[[{"type": kind}] * 3] * nrows,
                              subplot_titles=[str(x) for x in yrs],
                              horizontal_spacing=0.02
-                             )
+                             )           
 
             graphs = [] 
             for i in range(N):
-                df_yr = time_indexed.loc[time_indexed['year'] == yrs[i]]
-                
+                df_yr = time_indexed.loc[time_indexed['year'] == yrs[i]]                
+
                 #count all messages sent per user in the given year 
-                count_df = df_yr.groupby("sender").count() 
+                if bywords == "avg":
+                    count_df = df_yr.groupby("sender").sum() / df_yr.groupby("sender").count()                  
+                elif bywords == "words":
+                    count_df = df_yr.groupby("sender").sum()                 
+                elif bywords == "msg":
+                    count_df = df_yr.groupby("sender").count() 
+
                 count_df.sort_values("msg", inplace=True, ascending=False)
 
                 count_df = count_df[start:top]
                 count_df = count_df.join(self.chat_df)
+
                 if kind == "pie":
                     graph = go.Pie(labels=count_df.index, values=count_df.msg)                   
                 elif kind == "bar":
@@ -428,7 +459,11 @@ class ChatStat:
                     if h > len(graphs)-1:
                         break 
             
-            when.update_layout(height=450, width=1200, title_text="Top 10 Senders per Year (by Message Count)")
+            if kind == "pie":
+                when.update_layout(height=450, width=1200, title_text=figtitle)
+            else:
+                when.update_layout(height=450, width=1200, title_text=figtitle, showlegend=False)
+
             return when, graphs 
 
         else:
