@@ -110,6 +110,112 @@ class ChatStat:
             graph object (Bar or Pie)
         """
         chat = self.msg_df if chat is None else chat
+        start = int(omit_first)        
+        
+        count_df = chat.groupby("sender").count()
+        count_df.sort_values("msg", inplace=True, ascending=False)
+        count_df = count_df[start:top]
+        count_df = count_df.join(self.chat_df)
+        if kind == "pie":
+            graph = go.Pie(labels=count_df.index, values=count_df.msg, title=f"Messages by Sender (top {top})")
+            fig = go.Figure(graph)
+        elif kind == "bar":
+            graph = go.Bar(x=count_df.index, y=count_df.msg)
+            fig = go.Figure(graph)
+            fig.update_layout(xaxis=go.layout.XAxis(title=go.layout.xaxis.Title(text="Sender")),
+                              yaxis=go.layout.YAxis(title=go.layout.yaxis.Title(text="Number of Messages")))
+        else:
+            raise ValueError("kind must be either 'pie' or 'bar'")
+        #fig.update_layout(title_text=f"Messages by Sender (top {top})")
+        return fig, graph
+    
+    @show_or_return
+    def sent_from_words(self, chat=None, top=10, omit_first=False, kind="pie", show=True):
+        """ 
+        plots the number of messages received based on sender for the DF passed in. 
+        Can be used on filtered DataFrames. by default, only plots top 10 senders
+
+        Parameters
+        ----------
+        chat: pandas.DataFrame
+            message DataFrame to plot from, if none is provided, use self.msg_df
+        top: int, default=10
+            limits the plot to `top` number of chats
+        omit_first: bool, default=False
+            toggle to omit the first largest chat, which is typically the user
+        kind: str in {'pie', 'bar'}
+            kind of chart to plot, pie or bar
+        show: bool, default=True
+            toggle to show fig instead of returning graph obj
+
+        Returns
+        -------
+        plotly.graph_objects
+            graph object (Bar or Pie)
+        """
+        chat = self.msg_df if chat is None else chat
+        start = int(omit_first)
+        
+        #count number of characters per msg 
+        #print(chat["msg"].iloc[10:30])
+        chat.loc[:, "msg"] = chat.loc[:, "msg"].str.count(' ') + 1
+        #print(chat["msg"].iloc[10:30])
+        
+        #combine all values for "msg" column, then apply operation on them to get a single summary statistic 
+        count_df_msg = chat.groupby("sender").count() 
+        count_df = chat.groupby("sender").sum() 
+        
+        count_df_msg.sort_values("msg", inplace=True, ascending=False)
+        count_df.sort_values("msg", inplace=True, ascending=False)
+        
+        #get average words per msg 
+        count_df.loc[:, "msg"] = count_df.loc[:, "msg"].divide(count_df_msg.loc[:, "msg"]) 
+        #sort again 
+        count_df.sort_values("msg", inplace=True, ascending=False)
+        
+        count_df = count_df[start:top]
+        count_df = count_df.join(self.chat_df)
+        if kind == "pie":
+            graph = go.Pie(labels=count_df.index, values=count_df.msg, title=f"Words by Sender (top {top})")
+            fig = go.Figure(graph)
+        elif kind == "bar":
+            graph = go.Bar(x=count_df.index, y=count_df.msg)
+            fig = go.Figure(graph)
+            fig.update_layout(legend=None)
+            fig.update_xaxes(title_text = "Sender")
+            fig.update_yaxes(title_text = "Words per Message") 
+    
+        else:
+            raise ValueError("kind must be either 'pie' or 'bar'")
+        fig.update_layout(title_text=f"Words by Sender (top {top})")
+        return fig, graph
+    
+    @show_or_return
+    def timed_sent_from(self, chat=None, top=10, omit_first=False, kind="pie", show=True, years=[2018, 2019, 2020]):
+        """ 
+        plots the number of messages received based on sender for the DF passed in. 
+        Can be used on filtered DataFrames. by default, only plots top 10 senders
+
+        Parameters
+        ----------
+        chat: pandas.DataFrame
+            message DataFrame to plot from, if none is provided, use self.msg_df
+        top: int, default=10
+            limits the plot to `top` number of chats
+        omit_first: bool, default=False
+            toggle to omit the first largest chat, which is typically the user
+        kind: str in {'pie', 'bar'}
+            kind of chart to plot, pie or bar
+        show: bool, default=True
+            toggle to show fig instead of returning graph obj
+        years: years to separate counts into 
+
+        Returns
+        -------
+        plotly.graph_objects
+            graph object (Bar or Pie)
+        """
+        chat = self.msg_df if chat is None else chat
         start = int(omit_first)
         count_df = chat.groupby("sender").count()
         count_df.sort_values("msg", inplace=True, ascending=False)
@@ -127,7 +233,7 @@ class ChatStat:
             raise ValueError("kind must be either 'pie' or 'bar'")
         fig.update_layout(title_text=f"Messages by Sender (top {top})")
         return fig, graph
-
+    
     @show_or_return
     def msg_types(self, chat=None, show=True):
         """ 
@@ -177,7 +283,7 @@ class ChatStat:
         fig.update_layout(title_text="Types of Chat")
         return fig, graph
 
-    def personal_stats(self, name, word_lengths=[1, 3, 5]):
+    def personal_stats(self, name, word_lengths=[1, 3, 10]):
         """ 
         Plots a bunch of different plots based on a fitlered DataFrame of messages from `name`
 
@@ -221,7 +327,7 @@ class ChatStat:
         self.time_stats(from_sender, show=True)
         self.word_counts(from_sender, length=word_lengths, show=True)
 
-    def stat_by_chat(self, chat, word_lengths=[1, 3, 5]):
+    def stat_by_chat(self, chat, word_lengths=[1, 3, 10]):
         """ 
         Plots a bunch of different plots based on a fitlered DataFrame of messages in the chat `chat` 
 
@@ -244,14 +350,25 @@ class ChatStat:
         from_chat = self.msg_df[self.msg_df.thread_path == thread_name]
         print("Total # of messages: %d" % from_chat.msg.size)
         participants_graph = self.sent_from(from_chat, top=10, kind='pie', show=False)
+        participants_graph_words = self.sent_from_words(from_chat, top=10, kind='bar', show=False)
+        #timed_participat_graph = self.sent_from(from_chat, top=10, kind='pie', show=False)
+        
         msg_types_graph = self.msg_types(from_chat, show=False)
         fig = make_subplots(rows=1, cols=2, specs=[[{"type": "pie"}]*2])
         fig.add_trace(msg_types_graph, row=1, col=1)
         fig.add_trace(participants_graph, row=1, col=2)
+        #fig.add_trace(participants_graph_words, row=2, col=1)
         fig.update_layout(title_text=f"Stats for chat: {chat}")
         fig.show()
+        
+        f2 = make_subplots(rows=1, cols=2, subplot_titles=["Words by Sender", "Messages by Sender (Top 10)"], specs=[[{}, {"type": "pie"}]])
+        f2.add_trace(participants_graph_words, row=1, col=1) 
+        f2.add_trace(participants_graph, row=1, col=2)
+        f2.show() 
+        
         self.time_stats(from_chat, show=True)
         self.word_counts(from_chat, length=word_lengths, show=True)
+        self.tag_counts(from_chat, show=True)
 
     def generate_time_indexed_df(self, messages):
         """
@@ -492,7 +609,54 @@ class ChatStat:
             fig.update_layout(title_text=f"Top words with {length} or more letters")
 
         return fig, graph
+    
+    @show_or_return
+    def tag_counts(self, chat=None, top=10, show=True):
+        """ 
+        Counts the word usage based on the passed in DataFrame `chat` and 
+        plots words that include "@" 
 
+        Parameters
+        ----------
+        chat: pandas.DataFrame
+            message DataFrame to plot from, if none is provided, use self.msg_df
+        length: int or List[int], default=1
+            minimum length of words to consider
+            or generate multiple plots with a list of ints
+        top: int, default=10
+            limits the plot to `top` number of chats
+        """
+        chat = self.msg_df if chat is None else chat
+        # filter out multimedia
+        messages = chat['msg'][pd.isnull(chat.sticker) & pd.isnull(chat.photos) & pd.isnull(chat.videos)]
+        words = {'count': {}}
+        for msg in messages:
+            msg = str(msg).encode('latin1').decode('utf8')  # to get around encoding problems
+            for word in msg.split(" "):
+                word = word.lower()
+                word = word.rstrip('?:!.,;')
+                
+                if len(word) < 2:
+                    continue 
+                elif "@" != word[0]:
+                    continue 
+                
+                if word in words['count']:
+                    words['count'][word] += 1
+                else:
+                    words['count'][word] = 1
+
+        word_df = pd.DataFrame(words).sort_values("count", ascending=False)
+        
+        filtered_df = word_df[word_df > 10].dropna()
+        filtered_df = filtered_df.iloc[:, :top] 
+        
+        graph = go.Bar(x=filtered_df.index, y=filtered_df['count'])
+        fig = go.Figure(graph)
+        fig.update_layout(title_text=r"Top @s")
+
+        return fig, graph
+    
     @show_or_return
     def chat_counts(self, top=10, omit_first=True, show=True):
         """ 

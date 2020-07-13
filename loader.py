@@ -57,6 +57,12 @@ def parse_from_json(path=None):
         participants = [x['name']
                         for x in current_chat.get('participants', '')]
         title = current_chat.get('title', '')
+            
+        """ if 'asic' in title:
+            print(title) 
+        elif '½' in title:
+            print(title) """
+            
         is_still_participant = current_chat.get('is_still_participant', '')
         thread_type = current_chat.get('thread_type', '')
 
