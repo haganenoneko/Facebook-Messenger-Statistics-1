@@ -117,7 +117,7 @@ class ChatStat:
         count_df = count_df[start:top]
         count_df = count_df.join(self.chat_df)
         if kind == "pie":
-            graph = go.Pie(labels=count_df.index, values=count_df.msg, title=f"Messages by Sender (top {top})")
+            graph = go.Pie(labels=count_df.index, values=count_df.msg)
             fig = go.Figure(graph)
         elif kind == "bar":
             graph = go.Bar(x=count_df.index, y=count_df.msg)
@@ -132,7 +132,7 @@ class ChatStat:
     @show_or_return
     def sent_from_words(self, chat=None, top=10, omit_first=False, kind="pie", show=True):
         """ 
-        plots the number of messages received based on sender for the DF passed in. 
+        plots the average words per message received based on sender for the DF passed in. 
         Can be used on filtered DataFrames. by default, only plots top 10 senders
 
         Parameters
@@ -176,62 +176,24 @@ class ChatStat:
         count_df = count_df[start:top]
         count_df = count_df.join(self.chat_df)
         if kind == "pie":
-            graph = go.Pie(labels=count_df.index, values=count_df.msg, title=f"Words by Sender (top {top})")
+            graph = go.Pie(labels=count_df.index, values=count_df.msg, showlegend=False)
             fig = go.Figure(graph)
         elif kind == "bar":
-            graph = go.Bar(x=count_df.index, y=count_df.msg)
+            graph = go.Bar(x=count_df.index, y=count_df.msg, showlegend=False)
             fig = go.Figure(graph)
-            fig.update_layout(legend=None)
+            #fig.update_layout(legend=None)
             fig.update_xaxes(title_text = "Sender")
             fig.update_yaxes(title_text = "Words per Message") 
+        elif kind == "hbar": #horizontal bar 
+            graph = go.Bar(x=count_df.msg, y=count_df.index, showlegend=False, orientation="h")
+            fig = go.Figure(graph)
+            #fig.update_layout(legend=None)
+            fig.update_xaxes(title_text = "Average Words per Message")
+            fig.update_yaxes(title_text = "Sender") 
     
         else:
             raise ValueError("kind must be either 'pie' or 'bar'")
         fig.update_layout(title_text=f"Words by Sender (top {top})")
-        return fig, graph
-    
-    @show_or_return
-    def timed_sent_from(self, chat=None, top=10, omit_first=False, kind="pie", show=True, years=[2018, 2019, 2020]):
-        """ 
-        plots the number of messages received based on sender for the DF passed in. 
-        Can be used on filtered DataFrames. by default, only plots top 10 senders
-
-        Parameters
-        ----------
-        chat: pandas.DataFrame
-            message DataFrame to plot from, if none is provided, use self.msg_df
-        top: int, default=10
-            limits the plot to `top` number of chats
-        omit_first: bool, default=False
-            toggle to omit the first largest chat, which is typically the user
-        kind: str in {'pie', 'bar'}
-            kind of chart to plot, pie or bar
-        show: bool, default=True
-            toggle to show fig instead of returning graph obj
-        years: years to separate counts into 
-
-        Returns
-        -------
-        plotly.graph_objects
-            graph object (Bar or Pie)
-        """
-        chat = self.msg_df if chat is None else chat
-        start = int(omit_first)
-        count_df = chat.groupby("sender").count()
-        count_df.sort_values("msg", inplace=True, ascending=False)
-        count_df = count_df[start:top]
-        count_df = count_df.join(self.chat_df)
-        if kind == "pie":
-            graph = go.Pie(labels=count_df.index, values=count_df.msg, title=f"Messages by Sender (top {top})")
-            fig = go.Figure(graph)
-        elif kind == "bar":
-            graph = go.Bar(x=count_df.index, y=count_df.msg)
-            fig = go.Figure(graph)
-            fig.update_layout(xaxis=go.layout.XAxis(title=go.layout.xaxis.Title(text="Sender")),
-                              yaxis=go.layout.YAxis(title=go.layout.yaxis.Title(text="Number of Messages")))
-        else:
-            raise ValueError("kind must be either 'pie' or 'bar'")
-        fig.update_layout(title_text=f"Messages by Sender (top {top})")
         return fig, graph
     
     @show_or_return
@@ -254,9 +216,9 @@ class ChatStat:
         chat = self.msg_df if chat is None else chat
         type_dict = {"type": {"stickers": chat.sticker.count(), "photos": chat.photos.count(), "videos": chat.videos.count(), "links": chat[[("http" in str(msg)) for msg in chat.msg]].msg.count()}}
         type_df = pd.DataFrame(type_dict)
-        graph = go.Pie(labels=type_df.index, values=type_df.type, textinfo='label+percent', showlegend=False, title="Types of Multimedia Used")
+        graph = go.Pie(labels=type_df.index, values=type_df.type, textinfo='label+percent', showlegend=False)
         fig = go.Figure(graph)
-        fig.update_layout(title_text="Types of Multimedia Used")
+        #fig.update_layout(title_text="Types of Multimedia Used")
         return fig, graph
 
     @show_or_return
@@ -349,26 +311,37 @@ class ChatStat:
         thread_name = self.chat_df[self.chat_df.title == chat].index[0]
         from_chat = self.msg_df[self.msg_df.thread_path == thread_name]
         print("Total # of messages: %d" % from_chat.msg.size)
+
         participants_graph = self.sent_from(from_chat, top=10, kind='pie', show=False)
-        participants_graph_words = self.sent_from_words(from_chat, top=10, kind='bar', show=False)
+        participants_graph_words = self.sent_from_words(from_chat, top=25, kind='hbar', show=False)
         #timed_participat_graph = self.sent_from(from_chat, top=10, kind='pie', show=False)
         
         msg_types_graph = self.msg_types(from_chat, show=False)
-        fig = make_subplots(rows=1, cols=2, specs=[[{"type": "pie"}]*2])
+        fig = make_subplots(rows=1, cols=2, 
+            subplot_titles=["Multimedia Used", "Messages by Sender (Top 10)"], 
+            specs=[[{"type": "pie"}]*2]
+            )
         fig.add_trace(msg_types_graph, row=1, col=1)
         fig.add_trace(participants_graph, row=1, col=2)
         #fig.add_trace(participants_graph_words, row=2, col=1)
         fig.update_layout(title_text=f"Stats for chat: {chat}")
         fig.show()
-        
-        f2 = make_subplots(rows=1, cols=2, subplot_titles=["Words by Sender", "Messages by Sender (Top 10)"], specs=[[{}, {"type": "pie"}]])
+
+        f2 = make_subplots(rows=1, cols=1, subplot_titles=["Average Words per Message"])
         f2.add_trace(participants_graph_words, row=1, col=1) 
-        f2.add_trace(participants_graph, row=1, col=2)
+        f2.update_layout(height=800, width=800)
         f2.show() 
-        
+
+        f_yrs, g_yrs = self.yearly_sent_from(from_chat, top=10, kind='pie', show=True)
+        f_yrs.show()
+
         self.time_stats(from_chat, show=True)
-        self.word_counts(from_chat, length=word_lengths, show=True)
-        self.tag_counts(from_chat, show=True)
+        
+        f_w, g_w = self.word_counts(from_chat, length=word_lengths, show=True)
+        f_w.show() 
+        
+        f_tag, g_tag = self.tag_counts(from_chat, show=True)
+        f_tag.show() 
 
     def generate_time_indexed_df(self, messages):
         """
@@ -394,6 +367,73 @@ class ChatStat:
 
         return time_indexed
 
+    def yearly_sent_from(self, messages=None, top=10, omit_first=False, kind="pie", show=True):
+        """
+        generates an aggregated message count by year
+
+        Parameters
+        ----------
+        time_indexed: pandas.DataFrame
+            time-indexed message DataFrame to plot from
+            (use `generate_time_indexed_df`)
+
+        Returns
+        -------
+        plotly.graph_objects.Bar
+            Bar plot of data
+        """
+        start = int(omit_first)
+        messages = self.msg_df if messages is None else messages
+        # fig.suptitle("Time-based Stats: Procrastination Metrics", fontsize=20)
+        time_indexed = self.generate_time_indexed_df(messages)
+
+        #years represented in dataframe 
+        yrs = list(set(time_indexed['year'].values.tolist())) 
+
+        N = len(yrs) 
+        if N > 1:
+            if N <= 3:
+                nrows = 1 
+            else:
+                nrows = 2 
+            
+            when = make_subplots(rows=nrows, cols=3, specs=[[{"type": kind}] * 3] * nrows,
+                             subplot_titles=[str(x) for x in yrs],
+                             horizontal_spacing=0.02
+                             )
+
+            graphs = [] 
+            for i in range(N):
+                df_yr = time_indexed.loc[time_indexed['year'] == yrs[i]]
+                
+                #count all messages sent per user in the given year 
+                count_df = df_yr.groupby("sender").count() 
+                count_df.sort_values("msg", inplace=True, ascending=False)
+
+                count_df = count_df[start:top]
+                count_df = count_df.join(self.chat_df)
+                if kind == "pie":
+                    graph = go.Pie(labels=count_df.index, values=count_df.msg)                   
+                elif kind == "bar":
+                    graph = go.Bar(x=count_df.index, y=count_df.msg)                   
+
+                graphs.append(graph) 
+            
+            h = 0 #iterator 
+            for i in range(1, nrows+1): #rows 
+                for j in range(1, 4): #cols 
+                    when.add_trace(graphs[h], row=i, col=j)
+
+                    h += 1 
+                    if h > len(graphs)-1:
+                        break 
+            
+            when.update_layout(height=450, width=1200, title_text="Top 10 Senders per Year (by Message Count)")
+            return when, graphs 
+
+        else:
+            print("Tried to do year-by-year analysis of messages sent, but only 1 year available.")
+    
     def yearly_graph(self, time_indexed):
         """
         generates an aggregated message count by year
